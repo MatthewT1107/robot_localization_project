@@ -198,6 +198,8 @@ class ParticleFilter(Node):
             The function computes the value delta which is a tuple (x,y,theta)
             that indicates the change in position and angle between the odometry
             when the particles were last updated and the current odometry.
+
+            TODO: move each particle by delta but delta is in odom fram so need to rotate into each particles own heading. 
         """
         new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
         # compute the change in x,y,theta since our last update
@@ -212,7 +214,13 @@ class ParticleFilter(Node):
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
-        # TODO: modify particles using delta
+        for p in self.particle_cloud:
+            p.x += delta[0] * math.cos(p.theta) + delta[1] * math.sin(p.theta) #rotates the delta into the particles original frame
+            p.y += delta[0] * -math.sin(p.theta) + delta[1] * math.cos(p.theta)
+            p.theta += delta[2]
+            p.x += delta[0] * math.cos(p.theta) + delta[1] * math.sin(p.theta) #rotates the delta into the particles new frame
+            p.y += delta[0] * -math.sin(p.theta) + delta[1] * math.cos(p.theta)
+
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
@@ -229,8 +237,10 @@ class ParticleFilter(Node):
             r: the distance readings to obstacles
             theta: the angle relative to the robot frame for each corresponding reading 
         """
-        # TODO: implement this
-        pass
+        for p in self.particle_cloud:
+            lidar_scan(theta) - dist_to_closed_obstacle(theta)
+
+
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
