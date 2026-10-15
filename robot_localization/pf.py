@@ -19,6 +19,7 @@ from occupancy_field import OccupancyField
 from helper_functions import TFHelper
 from rclpy.qos import qos_profile_sensor_data
 from angle_helpers import quaternion_from_euler
+from occupancy_field import get_closest_obstacle_distance
 
 class Particle(object):
     """ Represents a hypothesis (particle) of the robot's pose consisting of x,y and theta (yaw)
@@ -238,9 +239,9 @@ class ParticleFilter(Node):
             theta: the angle relative to the robot frame for each corresponding reading 
         """
         for p in self.particle_cloud:
-            lidar_scan(theta) - dist_to_closed_obstacle(theta)
-
-
+            likelihood = abs(LaserScan(theta) - get_closest_obstacle_distance(theta))
+            p.w *= likelihood
+        self.normalize_particles()
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
