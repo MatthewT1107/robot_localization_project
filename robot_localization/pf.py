@@ -259,13 +259,15 @@ class ParticleFilter(Node):
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
-
+        old_theta = old_odom_xy_theta[2]
+        dx, dy = delta[0], delta[1]
+        dx_r = math.cos(old_theta) * dx + math.sin(old_theta) * dy
+        dy_r = -math.sin(old_theta) * dx + math.cos(old_theta) * dy
+        d_theta = self.transform_helper.angle_diff(new_odom_xy_theta[2], old_theta)
         for p in self.particle_cloud:
-            p.x += delta[0] * math.cos(p.theta) + delta[1] * math.sin(p.theta) #rotates the delta into the particles original frame
-            p.y += delta[0] * -math.sin(p.theta) + delta[1] * math.cos(p.theta)
-            p.theta += delta[2]
-            p.x += delta[0] * math.cos(p.theta) + delta[1] * math.sin(p.theta) #rotates the delta into the particles new frame
-            p.y += delta[0] * -math.sin(p.theta) + delta[1] * math.cos(p.theta)
+            p.x += math.cos(p.theta) * dx_r - math.sin(p.theta) * dy_r + np.random.normal(0, 0.02) #add some noise to the translation
+            p.y += -math.sin(p.theta) * dx_r - math.cos(p.theta) * dy_r + np.random.normal(0, 0.02) #add some noise to the translation
+            p.theta = self.transform_helper.angle_normalize(p.theta + d_theta +np.random.normal(0, 0.02)) #add some noise to the rotation
 
 
     def resample_particles(self):
@@ -307,7 +309,7 @@ class ParticleFilter(Node):
                 x = p.x + r_i*math.cos(p.theta + theta_i)
                 y = p.y + r_i*math.sin(p.theta + theta_i)
                 d = self.occupancy_field.get_closest_obstacle_distance(x, y) #dist between hit point from real obstacle on the map
-                if not math.isfinit(d):
+                if not math.isfinite(d):
                     continue #skips if distance is invalid
                 likelihood += math.exp(-d**2/(2*sigma**2)) #smaller d means closer to 1, vice versa
             p.w *= likelihood
