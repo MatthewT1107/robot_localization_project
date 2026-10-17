@@ -3,6 +3,7 @@
 """ This is the starter code for the robot localization project """
 
 import rclpy
+import random
 from threading import Thread
 from rclpy.time import Time
 from rclpy.node import Node
@@ -19,7 +20,6 @@ from occupancy_field import OccupancyField
 from helper_functions import TFHelper
 from rclpy.qos import qos_profile_sensor_data
 from angle_helpers import quaternion_from_euler
-from occupancy_field import get_closest_obstacle_distance
 
 class Particle(object):
     """ Represents a hypothesis (particle) of the robot's pose consisting of x,y and theta (yaw)
@@ -106,10 +106,29 @@ class ParticleFilter(Node):
         self.occupancy_field = OccupancyField(self)
         self.transform_helper = TFHelper(self)
 
+        # Get map data
+        self.map_info = self.occupancy_field.map.info
+        # Width and height are in terms of cells, not meters
+        self.map_width = self.map_info.width
+        self.map_height = self.map_info.height
+        # Resolution is how many world meters are in a cell
+        self.resolution = self.map_info.resolution # 0.05m/cell
+        # The minimum, mid, and maximum x and y are in
+        self.x_min = self.map_info.origin.position.x
+        self.y_min = self.map_info.origin.position.y
+        self.x_max = self.x_min + self.map_width * self.resolution
+        self.y_max = self.y_min + self.map_height * self.resolution
+        self.x_mid = self.x_min + (self.map_width/2) * self.resolution
+        self.y_mid = self.y_min + (self.map_height/2) * self.resolution
+
+
+
         # we are using a thread to work around single threaded execution bottleneck
         thread = Thread(target=self.loop_wrapper)
         thread.start()
         self.transform_update_timer = self.create_timer(0.05, self.pub_latest_transform)
+
+
 
     def pub_latest_transform(self):
         """ This function takes care of sending out the map to odom transform """
@@ -148,13 +167,13 @@ class ParticleFilter(Node):
             return
         
         (r, theta) = self.transform_helper.convert_scan_to_polar_in_robot_frame(msg, self.base_frame)
-        print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
+        #print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
         # clear the current scan so that we can process the next one
         self.scan_to_process = None
 
         self.odom_pose = new_pose
         new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
-        print("x: {0}, y: {1}, yaw: {2}".format(*new_odom_xy_theta))
+        #print("x: {0}, y: {1}, yaw: {2}".format(*new_odom_xy_theta))
 
         if not self.current_odom_xy_theta:
             self.current_odom_xy_theta = new_odom_xy_theta
@@ -237,9 +256,9 @@ class ParticleFilter(Node):
         """ Updates the particle weights in response to the scan data
             r: the distance readings to obstacles
             theta: the angle relative to the robot frame for each corresponding reading 
-        """
+        """ 
         for p in self.particle_cloud:
-            likelihood = abs(LaserScan(theta) - get_closest_obstacle_distance(theta))
+            likelihood = abs(LaserScan(theta) - self.occupancy_field.get_closest_obstacle_distance(theta))
             p.w *= likelihood
         self.normalize_particles()
 
@@ -250,17 +269,54 @@ class ParticleFilter(Node):
         self.initialize_particle_cloud(msg.header.stamp, xy_theta)
 
     def initialize_particle_cloud(self, timestamp, xy_theta=None):
-        """ Initialize the particle cloud.
-            Arguments
-            xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
-                      particle cloud around.  If this input is omitted, the odometry will be used """
-        if xy_theta is None:
-            xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
-        self.particle_cloud = []
-        # TODO create particles
+       """ Initialize the particle cloud.
+           Arguments
+           xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
+                   particle cloud around.  If this input is omitted, the odometry will be used """
+       if xy_theta is None:
+           xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
+       self.particle_cloud = []
+       # TODO create particles
 
-        self.normalize_particles()
-        self.update_robot_pose()
+       # --------------------------CREATING A GRID OF PARTICLES---------------------------------------------------
+       print("Initializing new cloud")
+       # Initialize {particle_num} particle square
+       particle_num = 625
+       # Row/Column length of particle square
+       RC_length = int(math.sqrt(particle_num))
+       # Loop to create each individual particle
+       for i in range(RC_length): # Loop through each x
+           for j in range(RC_length): # Loop through each y 
+            # Center the particle grid around estimated initial pose xy_theta
+            particle_x = xy_theta[0] + (i-RC_length/2) * ((self.map_width/3)/RC_length) * self.resolution
+            particle_y = xy_theta[1] + (j-RC_length/2) * ((self.map_height/3)/RC_length) * self.resolution
+            # Compute the distance of that particle to nearest object
+            d = self.occupancy_field.get_closest_obstacle_distance(particle_x,particle_y)
+
+
+            # --------------------------CHECKING PARTICLE VALIDITY------------------------------------------------
+            # If the distance is 0 or extremely close to 0, the particle is inside an object and will be skipped
+            if d<=0.01:
+                print(f"Object detected at {particle_x},{particle_y}")
+                continue
+            # If the coordinate is out of the map, NaN will be returned for d, therefore it will be skipped
+            elif not math.isfinite(d):
+                print(f"Object out of bounds at {particle_x},{particle_y}")
+                continue
+
+
+            # --------------------------SET HEADING AND CREATE PARTICLE-----------------------------------------------
+            # Each heading is random within 45 degrees of the heading of the estimated initial pose 
+            particle_theta = random.uniform(xy_theta[2] - math.pi / 4,xy_theta[2] + math.pi / 4)
+            # Create the particle instance based on the values
+            initial_particle = Particle(particle_x,particle_y,particle_theta,1)
+            # Add the particle to the list, repeat for each particle
+            self.particle_cloud.append(initial_particle)
+
+
+       self.normalize_particles()
+       self.update_robot_pose()
+       print(f"Particle list length:{len(self.particle_cloud)}")
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
