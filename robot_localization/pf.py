@@ -207,7 +207,11 @@ class ParticleFilter(Node):
 
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
-        self.robot_pose = Pose()
+        x = sum(p.w * p.x for p in self.particle_cloud)
+        y = sum(p.w * p.y for p in self.particle_cloud)
+        theta = sum(p.w * p.theta for p in self.particle_cloud)
+
+        self.robot_pose = Particle(x=x, y=y, theta=theta).as_pose()
         if hasattr(self, 'odom_pose'):
             self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                             self.odom_pose)
@@ -272,7 +276,8 @@ class ParticleFilter(Node):
             theta: the angle relative to the robot frame for each corresponding reading 
         """ 
         for p in self.particle_cloud:
-            likelihood = abs(LaserScan(theta) - self.occupancy_field.get_closest_obstacle_distance(theta))
+            actual_dist = r
+            likelihood = abs(actual_dist - self.occupancy_field.get_closest_obstacle_distance(p.x, p.y))
             p.w *= likelihood
         self.normalize_particles()
 
