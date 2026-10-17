@@ -266,7 +266,7 @@ class ParticleFilter(Node):
         d_theta = self.transform_helper.angle_diff(new_odom_xy_theta[2], old_theta)
         for p in self.particle_cloud:
             p.x += math.cos(p.theta) * dx_r - math.sin(p.theta) * dy_r + np.random.normal(0, 0.02) #add some noise to the translation
-            p.y += -math.sin(p.theta) * dx_r - math.cos(p.theta) * dy_r + np.random.normal(0, 0.02) #add some noise to the translation
+            p.y += math.sin(p.theta) * dx_r + math.cos(p.theta) * dy_r + np.random.normal(0, 0.02) #add some noise to the translation
             p.theta = self.transform_helper.angle_normalize(p.theta + d_theta +np.random.normal(0, 0.02)) #add some noise to the rotation
 
 
