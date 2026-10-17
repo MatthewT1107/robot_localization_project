@@ -296,9 +296,20 @@ class ParticleFilter(Node):
             r: the distance readings to obstacles
             theta: the angle relative to the robot frame for each corresponding reading 
         """ 
+        step = 5 #to speed it up, we are using every 5th beam
+        sigma = 0.1#error of the laser map
         for p in self.particle_cloud:
-            actual_dist = r
-            likelihood = abs(actual_dist - self.occupancy_field.get_closest_obstacle_distance(p.x, p.y))
+            likelihood = 0.0
+            for r_i, theta_i in list(zip(r, theta))[::step]:
+                if r_i == 0 or not math.isfinite(r_i):
+                    continue #skip invalid readings
+                #where the beam would be if the robot is at this pose
+                x = p.x + r_i*math.cos(p.theta + theta_i)
+                y = p.y + r_i*math.sin(p.theta + theta_i)
+                d = self.occupancy_field.get_closest_obstacle_distance(x, y) #dist between hit point from real obstacle on the map
+                if not math.isfinit(d):
+                    continue #skips if distance is invalid
+                likelihood += math.exp(-d**2/(2*sigma**2)) #smaller d means closer to 1, vice versa
             p.w *= likelihood
         self.normalize_particles()
 
