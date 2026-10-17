@@ -207,16 +207,37 @@ class ParticleFilter(Node):
 
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
-        x = sum(p.w * p.x for p in self.particle_cloud)
-        y = sum(p.w * p.y for p in self.particle_cloud)
-        theta = sum(p.w * p.theta for p in self.particle_cloud)
+        #self.robot_pose = Pose()
 
-        self.robot_pose = Particle(x=x, y=y, theta=theta).as_pose()
+
+        #!!!!!!!!!!!!!!!!!!!!!!!! Currently this function does weighted means for every particle. 
+        #!!!!!!!!!!!!!!!!!!!!!!!! We may want to change it to weighted means of top N particles (Victoria suggestion)
+
+        # Make a separate list for each attribute of particle
+        weights = [p.w for p in self.particle_cloud]
+        x_vals = [p.x for p in self.particle_cloud]
+        y_vals = [p.y for p in self.particle_cloud]
+        theta_vals = [p.theta for p in self.particle_cloud]
+
+        # Weighted x and y means
+        # zip produces (x,w) pairs for the lists
+        x_mean = sum(x*w for x,w in zip(x_vals,weights))
+        y_mean = sum(y*w for y,w in zip(y_vals,weights))
+
+        # Weighted theta mean
+        # Likely have to change this to incorporate angles wrapping around (trig stuff)
+        theta_mean = sum(t*w for t,w in zip(theta_vals,weights))
+        
+        # Create the guess as a particle 
+        guess = Particle(x_mean,y_mean,theta_mean)
+
+        # Send pose
+        self.robot_pose = guess.as_pose()
         if hasattr(self, 'odom_pose'):
-            self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
-                                                            self.odom_pose)
+            self.transform_helper.fix_map_to_odom_transform(self.robot_pose,                                                           self.odom_pose)
         else:
             self.get_logger().warn("Can't set map->odom transform since no odom data received")
+       
 
     def update_particles_with_odom(self):
         """ Update the particles using the newly given odometry pose.
