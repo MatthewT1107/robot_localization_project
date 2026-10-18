@@ -234,7 +234,7 @@ class ParticleFilter(Node):
         # Send pose
         self.robot_pose = guess.as_pose()
         if hasattr(self, 'odom_pose'):
-            self.transform_helper.fix_map_to_odom_transform(self.robot_pose,                                                           self.odom_pose)
+            self.transform_helper.fix_map_to_odom_transform(self.robot_pose, self.odom_pose)
         else:
             self.get_logger().warn("Can't set map->odom transform since no odom data received")
        
@@ -296,8 +296,24 @@ class ParticleFilter(Node):
         self.particle_cloud = new_particles
 
 
-        # Add random noise
-        
+        # Add random noise                                              
+        for p in self.particle_cloud:                                                
+            p.x += np.random.normal(0, 0.05)                                         
+            p.y += np.random.normal(0, 0.05)                                         
+            p.theta = self.transform_helper.angle_normalize(p.theta + np.random.normal(0, 0.05))  
+
+        valid_particles = []
+        for p in self.particle_cloud:
+            d = self.occupancy_field.get_closest_obstacle_distance(p.x, p.y) #checking dist to closest obj
+            if math.isfinite(d) and d > 0.01:
+                valid_particles.append(p) #adding only valid particles
+        n_removed = len(self.particle_cloud) - len(valid_particles) #count of particles removed
+        self.particle_cloud = valid_particles #particle cloud updated with only valid particles
+
+        # Replace each removed particle with a new random one so the count stays the same
+        for _ in range(n_removed):
+            self.random_particle()
+
 
 
         for _ in range(n_random):
