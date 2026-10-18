@@ -78,7 +78,7 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
         self.scan_topic = "scan"        # the topic where we will get laser scans from 
 
-        self.n_particles = 300          # the number of particles to use
+        self.n_particles = 625          # the number of particles to use
 
         self.d_thresh = 0.2             # the amount of linear movement before performing an update
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
@@ -225,8 +225,10 @@ class ParticleFilter(Node):
         y_mean = sum(y*w for y,w in zip(y_vals,weights))
 
         # Weighted theta mean
-        # Likely have to change this to incorporate angles wrapping around (trig stuff)
-        theta_mean = sum(t*w for t,w in zip(theta_vals,weights))
+        # INSERT EXPLANATION
+        s = sum(p.w * math.sin(p.theta) for p in self.particle_cloud)
+        c = sum(p.w * math.cos(p.theta) for p in self.particle_cloud)
+        theta_mean = math.atan2(s, c)
         
         # Create the guess as a particle 
         guess = Particle(x_mean,y_mean,theta_mean)
@@ -280,19 +282,73 @@ class ParticleFilter(Node):
         self.normalize_particles()
         # TODO: fill out the rest of the implementation
         
+        length = len(self.particle_cloud)
+        n_random = 25
+        n_keep = length - n_random
+
         # Get the weights of each particle in particle cloud as a list
         weights = [p.w for p in self.particle_cloud]
-        length = len(self.particle_cloud)
+        
         # Use the helper function to randomly choose particles to add to new list based on weights
-        new_particles = draw_random_sample(self.particle_cloud,weights,length)
+        # We take n_keep particles and replace n_random particles to add some randomness to the particle cloud
+        new_particles = draw_random_sample(self.particle_cloud,weights,n_keep)
+
+        
         # Update particle cloud to contain new particles
         self.particle_cloud = new_particles
 
+
+        # Add random noise
+        
+
+
+        for _ in range(n_random):
+            self.random_particle()
         # Reset the weights for each particle
         # May not be necessary, we'll see after testing
         for p in self.particle_cloud:
             p.w = 1.0 / len(self.particle_cloud)
 
+
+        
+        print(f"Particles resampled. Cloud list is {len(self.particle_cloud)}")
+
+    def random_particle(self,xy_theta=None):
+        """ Create a random, valid particle. If an initial pose is given, the particle will be generated around the pose.
+            Otherwise, the particle will be completely random
+            Args:
+                xy_theta: A triple consisting of the mean x, y, and theta to initialize the particle cloud around.   
+        """
+        # While loop used as a repeat if any particle fails
+        while True:
+            if xy_theta is None:
+                # Generate particles over the entire map
+                # Completely random x,y, and theta values within map bounds
+                particle_x = random.uniform(self.x_min, self.x_max)
+                particle_y = random.uniform(self.y_min, self.y_max)
+                particle_theta = random.uniform(0,2*math.pi)
+            else:
+                # Generate particles over most of the map concentrated more on the initial pose xy_theta
+                # This is done using a gaussian distribution with a mean of the initial pose and a standard deviation dev for x and y
+                particle_x = random.gauss(xy_theta[0], 0.5)
+                particle_y = random.gauss(xy_theta[1], 0.5)
+                particle_theta = random.gauss(xy_theta[2], 0.3)
+
+            # Get the distance from the particle to the closest obstacle
+            d = self.occupancy_field.get_closest_obstacle_distance(particle_x,particle_y)
+            # If the particle is within bounds and not inside of an object, break out the loop and create particle
+            if math.isfinite(d) and d > 0.01:
+                break
+
+        # Create the particle
+        random_particle = Particle(particle_x,particle_y,particle_theta,1.0)
+        # Add the particle to the list, repeat for each particle
+        # print("Random particle made")
+        self.particle_cloud.append(random_particle)
+        
+
+        
+            
     def update_particles_with_laser(self, r, theta):
         """ Updates the particle weights in response to the scan data
             r: the distance readings to obstacles
@@ -322,54 +378,31 @@ class ParticleFilter(Node):
         self.initialize_particle_cloud(msg.header.stamp, xy_theta)
 
     def initialize_particle_cloud(self, timestamp, xy_theta=None):
-       """ Initialize the particle cloud.
+        """ Initialize the particle cloud.
            Arguments
            xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
                    particle cloud around.  If this input is omitted, the odometry will be used """
-       if xy_theta is None:
-           xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
-       self.particle_cloud = []
-       # TODO create particles
+        if xy_theta is None:
+            xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
+        self.particle_cloud = []
+        # TODO create particles
 
-       # --------------------------CREATING A GRID OF PARTICLES---------------------------------------------------
-       print("Initializing new cloud")
-       # Initialize {particle_num} particle square
-       particle_num = 625
-       # Row/Column length of particle square
-       RC_length = int(math.sqrt(particle_num))
-       # Loop to create each individual particle
-       for i in range(RC_length): # Loop through each x
-           for j in range(RC_length): # Loop through each y 
-            # Center the particle grid around estimated initial pose xy_theta
-            particle_x = xy_theta[0] + (i-RC_length/2) * ((self.map_width/3)/RC_length) * self.resolution
-            particle_y = xy_theta[1] + (j-RC_length/2) * ((self.map_height/3)/RC_length) * self.resolution
-            # Compute the distance of that particle to nearest object
-            d = self.occupancy_field.get_closest_obstacle_distance(particle_x,particle_y)
+        # --------------------------CREATING INITIAL PARTICLES---------------------------------------------------
+        print("Initializing new cloud")
+        focused_particle_num = 600 # Number of particles focused around initial pose
+        random_particle_num = 25 # Number of completely random particles
 
+        # Create the focused particles using the initial pose xy_theta
+        for p in range(focused_particle_num):            
+            self.random_particle(xy_theta)
 
-            # --------------------------CHECKING PARTICLE VALIDITY------------------------------------------------
-            # If the distance is 0 or extremely close to 0, the particle is inside an object and will be skipped
-            if d<=0.01:
-                print(f"Object detected at {particle_x},{particle_y}")
-                continue
-            # If the coordinate is out of the map, NaN will be returned for d, therefore it will be skipped
-            elif not math.isfinite(d):
-                print(f"Object out of bounds at {particle_x},{particle_y}")
-                continue
+        # Create 25 random particles to add some randomness to the particle cloud
+        for p in range (random_particle_num):
+            self.random_particle()
 
-
-            # --------------------------SET HEADING AND CREATE PARTICLE-----------------------------------------------
-            # Each heading is random within 45 degrees of the heading of the estimated initial pose 
-            particle_theta = random.uniform(xy_theta[2] - math.pi / 4,xy_theta[2] + math.pi / 4)
-            # Create the particle instance based on the values
-            initial_particle = Particle(particle_x,particle_y,particle_theta,1)
-            # Add the particle to the list, repeat for each particle
-            self.particle_cloud.append(initial_particle)
-
-
-       self.normalize_particles()
-       self.update_robot_pose()
-       print(f"Particle list length:{len(self.particle_cloud)}")
+        self.normalize_particles()
+        self.update_robot_pose()
+        print(f"Particle list length:{len(self.particle_cloud)}")
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
