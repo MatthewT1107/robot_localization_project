@@ -82,7 +82,8 @@ class ParticleFilter(Node):
 
         self.d_thresh = 0.2             # the amount of linear movement before performing an update
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
-
+        self.w_fast = None # fast average of particle likelihoods
+        self.w_slow = None # slow average of particle likelihoods
         # TODO: define additional constants if needed
 
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
@@ -281,7 +282,13 @@ class ParticleFilter(Node):
         # TODO: fill out the rest of the implementation
         
         length = len(self.particle_cloud)
-        n_random = 25
+        #n_random = 25 - testing kidnap logic
+        #add more random particles if the current mathc is worse than usual (kidnapped)
+        if self.w_slow:
+            p_random = max(0, 1-self.w_fast/self.w_slow) #p_random is how much of the cloud needs to be replaces with random particles. w_fast/w_slow gives the ratio of how well filter is currently compared to previously. using max to cap it at 0 if it goes negative
+        else:
+            p_random = 0
+        n_random = max(5,int(p_random * length)) #always have a min of 5 random particles
         n_keep = length - n_random
 
         # Get the weights of each particle in particle cloud as a list
@@ -385,6 +392,18 @@ class ParticleFilter(Node):
                     continue #skips if distance is invalid
                 likelihood += math.exp(-d**2/(2*sigma**2)) #smaller d means closer to 1, vice versa
             p.w *= likelihood
+       
+        #figuring out if filter is lost (robot kidnapping)
+        self.avg_likelihood = sum(p.w for p in self.particle_cloud) / len(self.particle_cloud) if self.particle_cloud else 0 #average of particle likelihoods to see how good the cloud is for the scan
+        alpha_slow = 0.05 #rate of slow average. moves slower so it remembers how the particle filter behaved earlier
+        alpha_fast = 0.2 #rate of fast average. it moves faster to see how the filter is performing currently
+        #measuring how well the particles match the laser scan at different rates
+        if self.w_slow is None:
+            self.w_slow = self.avg_likelihood
+            self.w_fast = self.avg_likelihood
+        else:
+            self.w_slow +=alpha_slow * (self.avg_likelihood - self.w_slow) #using exponential moving average so it moves the average to the new value at a certain rate (alpha is how far it moves)
+            self.w_fast +=alpha_fast * (self.avg_likelihood - self.w_fast)
         self.normalize_particles()
 
     def update_initial_pose(self, msg):
