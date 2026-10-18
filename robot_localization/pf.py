@@ -207,8 +207,6 @@ class ParticleFilter(Node):
 
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
-        #self.robot_pose = Pose()
-
 
         #!!!!!!!!!!!!!!!!!!!!!!!! Currently this function does weighted means for every particle. 
         #!!!!!!!!!!!!!!!!!!!!!!!! We may want to change it to weighted means of top N particles (Victoria suggestion)
@@ -217,17 +215,17 @@ class ParticleFilter(Node):
         weights = [p.w for p in self.particle_cloud]
         x_vals = [p.x for p in self.particle_cloud]
         y_vals = [p.y for p in self.particle_cloud]
-        theta_vals = [p.theta for p in self.particle_cloud]
-
+        
         # Weighted x and y means
-        # zip produces (x,w) pairs for the lists
+        # zip produces (x,w) pairs for the two lists
         x_mean = sum(x*w for x,w in zip(x_vals,weights))
         y_mean = sum(y*w for y,w in zip(y_vals,weights))
 
-        # Weighted theta mean
-        # INSERT EXPLANATION
+        # Weighted theta mean.
+        # Convert each angle into weighted horizontal and vertical components using sin and cosine
         s = sum(p.w * math.sin(p.theta) for p in self.particle_cloud)
         c = sum(p.w * math.cos(p.theta) for p in self.particle_cloud)
+        # Convert components back into an angle
         theta_mean = math.atan2(s, c)
         
         # Create the guess as a particle 
@@ -327,13 +325,15 @@ class ParticleFilter(Node):
                 particle_x = random.uniform(self.x_min, self.x_max)
                 particle_y = random.uniform(self.y_min, self.y_max)
                 particle_theta = random.uniform(0,2*math.pi)
+                particle_theta = math.atan2(math.sin(particle_theta),math.cos(particle_theta))
             else:
                 # Generate particles over most of the map concentrated more on the initial pose xy_theta
                 # This is done using a gaussian distribution with a mean of the initial pose and a standard deviation dev for x and y
                 particle_x = random.gauss(xy_theta[0], 0.5)
                 particle_y = random.gauss(xy_theta[1], 0.5)
                 particle_theta = random.gauss(xy_theta[2], 0.3)
-
+                particle_theta = math.atan2(math.sin(particle_theta),math.cos(particle_theta)
+)
             # Get the distance from the particle to the closest obstacle
             d = self.occupancy_field.get_closest_obstacle_distance(particle_x,particle_y)
             # If the particle is within bounds and not inside of an object, break out the loop and create particle
