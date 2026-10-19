@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.vscode/
+*.db3-shm
+*.db3-wal
