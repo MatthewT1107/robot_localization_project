@@ -3,7 +3,8 @@ Unit tests for pf.py
 
 Took inspiration from a discord thread between River and Victoria about interfacing with pytest.
 Implemented unit tests so they don't depend on ROS using 'toy test classes.' This just tests logical functionalities.
-
+ 
+Run using 'python3 -m pytest unit_tests.py -v' in robot_localization folder
 """
 
 import math
