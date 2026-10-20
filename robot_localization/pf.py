@@ -70,7 +70,16 @@ class ParticleFilter(Node):
             current_odom_xy_theta: the pose of the robot in the odometry frame when the last filter update was performed.
                                    The pose is expressed as a list [x,y,theta] (where theta is the yaw)
             thread: this thread runs your main loop
+            map_info: metadata about the occupancy grid map including resolution, width, height, and origin
+            map_width: integer of # of cells in the map width-wise
+            map_height: integer of # of cells in the map height-wise
+            resolution: float conversion number from cells to world meters
+            x_min: float origin of the map in world meters for x
+            y_min: float origin of the map in world meters for y
+            x_max: float maximum size in x of the map
+            y_max: float maximum size in y of the map
     """
+
     def __init__(self):
         super().__init__('pf')
         self.base_frame = "base_footprint"   # the frame of the robot base
@@ -78,14 +87,16 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
         self.scan_topic = "scan"        # the topic where we will get laser scans from 
 
-        self.n_particles = 625          # the number of particles to use
+        self.n_particles = 1050          # the number of particles to use
 
         self.d_thresh = 0.2             # the amount of linear movement before performing an update
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
         self.w_fast = None # fast average of particle likelihoods
         self.w_slow = None # slow average of particle likelihoods
+
         # TODO: define additional constants if needed
 
+        
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
         self.create_subscription(PoseWithCovarianceStamped, 'initialpose', self.update_initial_pose, 10)
 
@@ -108,28 +119,21 @@ class ParticleFilter(Node):
         self.occupancy_field = OccupancyField(self)
         self.transform_helper = TFHelper(self)
 
-        # Get map data
-        self.map_info = self.occupancy_field.map.info
+        # Obtaining map data
+        self.map_info = self.occupancy_field.map.info # metadata containg map information
         # Width and height are in terms of cells, not meters
-        self.map_width = self.map_info.width
-        self.map_height = self.map_info.height
-        # Resolution is how many world meters are in a cell
-        self.resolution = self.map_info.resolution # 0.05m/cell
-        # The minimum, mid, and maximum x and y are in
-        self.x_min = self.map_info.origin.position.x
-        self.y_min = self.map_info.origin.position.y
-        self.x_max = self.x_min + self.map_width * self.resolution
-        self.y_max = self.y_min + self.map_height * self.resolution
-        self.x_mid = self.x_min + (self.map_width/2) * self.resolution
-        self.y_mid = self.y_min + (self.map_height/2) * self.resolution
-
-
+        self.map_width = self.map_info.width # how wide the map is in terms of cells
+        self.map_height = self.map_info.height # how tall the map is in terms of cells
+        self.resolution = self.map_info.resolution # the number of world meters in a cell (0.05m/cell)
+        self.x_min = self.map_info.origin.position.x # origin in x
+        self.y_min = self.map_info.origin.position.y # origin in y 
+        self.x_max = self.x_min + self.map_width * self.resolution # end of map in x
+        self.y_max = self.y_min + self.map_height * self.resolution # end of map in y
 
         # we are using a thread to work around single threaded execution bottleneck
         thread = Thread(target=self.loop_wrapper)
         thread.start()
         self.transform_update_timer = self.create_timer(0.05, self.pub_latest_transform)
-
 
 
     def pub_latest_transform(self):
@@ -192,16 +196,22 @@ class ParticleFilter(Node):
         self.publish_particles(msg.header.stamp)
 
     def moved_far_enough_to_update(self, new_odom_xy_theta):
+        """
+        Check if neato moved far enough to update
+        Args:
+            new_odom_xy_theta: The new odometry position of the Neato
+        """
         return math.fabs(new_odom_xy_theta[0] - self.current_odom_xy_theta[0]) > self.d_thresh or \
                math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or \
                math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh
 
 
     def update_robot_pose(self):
-        """ Update the estimate of the robot's pose given the updated particles.
+        """ Update the estimate of the robot's pose given the updated particles. 
             There are two logical methods for this:
                 (1): compute the mean pose
                 (2): compute the most likely pose (i.e. the mode of the distribution)
+            Here, the mean pose is computed based on the weighted mean from all particles.
         """
         # first make sure that the particle weights are normalized
         self.normalize_particles()
@@ -209,15 +219,12 @@ class ParticleFilter(Node):
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
 
-        #!!!!!!!!!!!!!!!!!!!!!!!! Currently this function does weighted means for every particle. 
-        #!!!!!!!!!!!!!!!!!!!!!!!! We may want to change it to weighted means of top N particles (Victoria suggestion)
-
-        # Make a separate list for each attribute of particle
+        # Make a separate list for weight, x, and y attribute of particle
         weights = [p.w for p in self.particle_cloud]
         x_vals = [p.x for p in self.particle_cloud]
         y_vals = [p.y for p in self.particle_cloud]
         
-        # Weighted x and y means
+        # Weighted means for x and y
         # zip produces (x,w) pairs for the two lists
         x_mean = sum(x*w for x,w in zip(x_vals,weights))
         y_mean = sum(y*w for y,w in zip(y_vals,weights))
@@ -228,6 +235,7 @@ class ParticleFilter(Node):
         c = sum(p.w * math.cos(p.theta) for p in self.particle_cloud)
         # Convert components back into an angle
         theta_mean = math.atan2(s, c)
+
         
         # Create the guess as a particle 
         guess = Particle(x_mean,y_mean,theta_mean)
@@ -272,10 +280,11 @@ class ParticleFilter(Node):
 
 
     def resample_particles(self):
-        """ Resample the particles according to the new particle weights.
+        """ Resample the particles according to the new particle weights. 
             The weights stored with each particle should define the probability that a particular
             particle is selected in the resampling step.  You may want to make use of the given helper
             function draw_random_sample in helper_functions.py.
+
         """
         # make sure the distribution is normalized
         self.normalize_particles()
@@ -283,7 +292,7 @@ class ParticleFilter(Node):
         
         length = len(self.particle_cloud)
         #n_random = 25 - testing kidnap logic
-        #add more random particles if the current mathc is worse than usual (kidnapped)
+        #add more random particles if the current math is worse than usual (kidnapped)
         if self.w_slow:
             p_random = max(0, 1-self.w_fast/self.w_slow) #p_random is how much of the cloud needs to be replaces with random particles. w_fast/w_slow gives the ratio of how well filter is currently compared to previously. using max to cap it at 0 if it goes negative
         else:
@@ -297,11 +306,9 @@ class ParticleFilter(Node):
         # Use the helper function to randomly choose particles to add to new list based on weights
         # We take n_keep particles and replace n_random particles to add some randomness to the particle cloud
         new_particles = draw_random_sample(self.particle_cloud,weights,n_keep)
-
         
         # Update particle cloud to contain new particles
         self.particle_cloud = new_particles
-
 
         # Add random noise                                              
         for p in self.particle_cloud:                                                
@@ -321,37 +328,33 @@ class ParticleFilter(Node):
         for _ in range(n_removed):
             self.random_particle()
 
-
-
         for _ in range(n_random):
             self.random_particle()
+
         # Reset the weights for each particle
-        # May not be necessary, we'll see after testing
         for p in self.particle_cloud:
             p.w = 1.0 / len(self.particle_cloud)
 
-
-        
         print(f"Particles resampled. Cloud list is {len(self.particle_cloud)}")
 
     def random_particle(self,xy_theta=None):
         """ Create a random, valid particle. If an initial pose is given, the particle will be generated around the pose.
-            Otherwise, the particle will be completely random
+            Otherwise, the particle will be completely random.
             Args:
                 xy_theta: A triple consisting of the mean x, y, and theta to initialize the particle cloud around.   
         """
         # While loop used as a repeat if any particle fails
         while True:
             if xy_theta is None:
-                # Generate particles over the entire map
+                # Generate a particle anywhere on the map
                 # Completely random x,y, and theta values within map bounds
                 particle_x = random.uniform(self.x_min, self.x_max)
                 particle_y = random.uniform(self.y_min, self.y_max)
                 particle_theta = random.uniform(0,2*math.pi)
                 particle_theta = math.atan2(math.sin(particle_theta),math.cos(particle_theta))
             else:
-                # Generate particles over most of the map concentrated more on the initial pose xy_theta
-                # This is done using a gaussian distribution with a mean of the initial pose and a standard deviation dev for x and y
+                # Generate a particle over most of the map concentrated on the initial pose xy_theta
+                # This is done using a gaussian distribution with a mean of the initial pose and a standard deviation for x, y, and theta
                 particle_x = random.gauss(xy_theta[0], 0.5)
                 particle_y = random.gauss(xy_theta[1], 0.5)
                 particle_theta = random.gauss(xy_theta[2], 0.3)
@@ -366,12 +369,9 @@ class ParticleFilter(Node):
         # Create the particle
         random_particle = Particle(particle_x,particle_y,particle_theta,1.0)
         # Add the particle to the list, repeat for each particle
-        # print("Random particle made")
         self.particle_cloud.append(random_particle)
         
-
-        
-            
+         
     def update_particles_with_laser(self, r, theta):
         """ Updates the particle weights in response to the scan data
             r: the distance readings to obstacles
@@ -386,13 +386,14 @@ class ParticleFilter(Node):
                     continue #skip invalid readings
                 #where the beam would be if the robot is at this pose
                 x = p.x + r_i*math.cos(p.theta + theta_i)
-                y = p.y + r_i*math.sin(p.theta + theta_i)
+                y = p.y + r_i*math.sin(p.theta + theta_i)   
                 d = self.occupancy_field.get_closest_obstacle_distance(x, y) #dist between hit point from real obstacle on the map
                 if not math.isfinite(d):
                     continue #skips if distance is invalid
                 likelihood += math.exp(-d**2/(2*sigma**2)) #smaller d means closer to 1, vice versa
             p.w *= likelihood
        
+
         #figuring out if filter is lost (robot kidnapping)
         self.avg_likelihood = sum(p.w for p in self.particle_cloud) / len(self.particle_cloud) if self.particle_cloud else 0 #average of particle likelihoods to see how good the cloud is for the scan
         alpha_slow = 0.05 #rate of slow average. moves slower so it remembers how the particle filter behaved earlier
@@ -424,20 +425,20 @@ class ParticleFilter(Node):
 
         # --------------------------CREATING INITIAL PARTICLES---------------------------------------------------
         print("Initializing new cloud")
-        focused_particle_num = 600 # Number of particles focused around initial pose
-        random_particle_num = 25 # Number of completely random particles
-
+        focused_particle_num = 1000 # Number of particles focused around initial pose
+        random_particle_num = 50 # Number of completely random particles
+        
         # Create the focused particles using the initial pose xy_theta
         for p in range(focused_particle_num):            
             self.random_particle(xy_theta)
 
-        # Create 25 random particles to add some randomness to the particle cloud
+        # Create random_particle_num random particles to add some randomness to the particle cloud
         for p in range (random_particle_num):
             self.random_particle()
 
         self.normalize_particles()
         self.update_robot_pose()
-        print(f"Particle list length:{len(self.particle_cloud)}")
+        print(f"Initial Particle list length:{len(self.particle_cloud)}")
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
@@ -456,6 +457,11 @@ class ParticleFilter(Node):
             p.w /= total_weight #divides each particles weight by the total
 
     def publish_particles(self, timestamp):
+        """
+            Publish particles in cloud
+            Args:
+                timestamp: Time published for header
+        """
         msg = ParticleCloud()
         msg.header.frame_id = self.map_frame
         msg.header.stamp = timestamp
