@@ -158,11 +158,17 @@ We also ran several tests using the gazebo simulator with the neato. We used the
 
 In our initial implementations of the resampler, it injected a fixed 25 random particles (4% of the 625 particle cloud at the time) every update. We replaced it with an adaptive injection logic, which adds at least 5 random particles and up to the whole cloud, depending on how bad the current scan match is compared to usual (scaled by `1- w_fast / w_slow`). With fixed injection, the amount of searching never changes. When the filter is tracking well, the random particles are just acting as noise and die out the next resample, so they cost computing power and time without contributing to the filter. When the robot is lost, the 25 random particles spread over the whole map but are almost never enough for one of them to be near the real pose to be able to recover the cloud.  
 
-> **TODO:** ADD VIDEO OF FIXED INJECTION
+> Fixed Injection
+https://github.com/user-attachments/assets/4a1849fb-41c9-4980-87d5-4700034f813c
+
+
 
 The adaptive injection fixes both cases. When the filter is confident, almost the whole cloud is used to track. When the scans suddenly match worse than how they have been, the filter assumes it is lost and replaces a big part of the cloud with random particles to search the map for the new pose. 
 
-> **TODO:** ADD VIDEO OF ADAPTIVE INJECTION
+> Adaptive Injection
+https://github.com/user-attachments/assets/0c1a6bff-50c1-4ab7-a454-58e8000886dc
+
+
 
 There are still some limitations to our implementation of the adaptive injection. It still can’t recover well from larger kidnaps (more than 3 m). The random particles are spread over the whole map, and the hallway has multiple places that  have similar looking lidar scans. Once the cloud was locked onto one of them, the scans matched well again, so `w_fast` increased and the filter stopped injecting random particles even though it was converging in the wrong place. The model can only tell that something is wrong when the scan match gets worse, so it can’t detect a wrong pose that looks right to the lidar.
 
