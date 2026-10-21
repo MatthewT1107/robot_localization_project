@@ -2,7 +2,8 @@
 **Matthew Townsend and Pia Swarup**
 *Computational Introduction to Robotics*
 
-> **TODO:** add GIF of filter converging in rviz
+<img width="400" height="177" alt="PF_gazebo_sim (1)" src="https://github.com/user-attachments/assets/b86c8f27-bf57-4487-bb93-192b333a3219" />
+
  
 
 ## Goal
@@ -30,10 +31,11 @@ Every particle is checked against the occupancy field and redrawn if it lands ou
 
 ### Motion update
 
-Odometry returns the change in the robot’s pose in the odom frame. Each particle has its own heading, so we can't just add dx, dy to every particle. Instead we have to rotate dx, dy into the robot’s own frame using the old odom heading. This gives us how much we moved forward and sideways. Then, we rotate the robot frame motion back out using each particle’s heading and add it to the particle. Next, we add d to the particle’s heading and add some Gaussian noise (=0.02) to x, y, and , since odometry isn’t perfect.
+Odometry returns the change in the robot’s pose in the odom frame. Each particle has its own heading, so we can't just add dx, dy to every particle. Instead we have to rotate dx, dy into the robot’s own frame using the old odom heading. This gives us how much we moved forward and sideways. Then, we rotate the robot frame motion back out using each particle’s heading and add it to the particle. Next, we add dθ to the particle’s heading and add some Gaussian noise (σ=0.02) to x, y, and , since odometry isn’t perfect.
 
 
-
+<img width="1024" height="768" alt="Comprobo Particle Filter Conceptual Overview (2)" src="https://github.com/user-attachments/assets/d2104112-4729-4760-970c-1450a8be3015" />
+*Figure 2. Example of Correct and Incorrect Poses in Odom Frame*
 
 
 ### Laser weighting
@@ -49,13 +51,17 @@ inf) are skipped.
 
 ### Pose estimate
 
-The robot’s pose is the weighted mean of the particles. X and y are a normal weighted average, but theta can’t be averaged directly since angles wrap around. Averaging them directly would give errors whenever the heading fall on both sides of the 180 wraparound. Therefore, we average the weighted `sin θ` and `cos θ` and take `atan2` of the result since vectors don’t have the wraparound problem. This pose estimate is used to update the map to odom transform. 
+The robot’s pose is the weighted mean of the particles. X and y are a normal weighted average, but theta can’t be averaged directly since angles wrap around. Averaging them directly would give errors whenever the heading fall on both sides of the 180° wraparound. Therefore, we average the weighted `sin θ` and `cos θ` and take `atan2` of the result since vectors don’t have the wraparound problem. This pose estimate is used to update the map to odom transform. 
 
 ### Resampling
 
-In the resampling function, we draw a new cloud from the old one with each particle’s chance of getting picked equal to its weight. Highest weight particles get copied and low ones die out. We add some noise (=0.05) to every particle so the copies don't all end up in the same position. Then, we remove any particle that ended up inside a wall or off the map, and replace it with a  random one. We also implemented some adaptive random injection, replacing some particles with random ones spread over the whole map depending on how ‘lost’ the filter seems. Last, we set all weights equal.
+In the resampling function, we draw a new cloud from the old one with each particle’s chance of getting picked equal to its weight. Highest weight particles get copied and low ones die out. We add some noise (σ=0.05) to every particle so the copies don't all end up in the same position. Then, we remove any particle that ended up inside a wall or off the map, and replace it with a  random one. We also implemented some adaptive random injection, replacing some particles with random ones spread over the whole map depending on how ‘lost’ the filter seems. Last, we set all weights equal.
 
-*Figure 2. Visualization of ROS nodes and topics*
+
+
+<img width="1280" height="960" alt="Comprobo Particle Filter Conceptual Overview (3)" src="https://github.com/user-attachments/assets/d3183949-4d9d-4808-845e-bf772437483d" />
+
+*Figure 3. Visualization of ROS nodes and topics*
 
 ## Design Decisions
 
