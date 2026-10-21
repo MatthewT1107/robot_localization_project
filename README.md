@@ -35,6 +35,7 @@ Odometry returns the change in the robot’s pose in the odom frame. Each partic
 
 
 <img width="1024" height="768" alt="Comprobo Particle Filter Conceptual Overview (2)" src="https://github.com/user-attachments/assets/d2104112-4729-4760-970c-1450a8be3015" />
+
 *Figure 2. Example of Correct and Incorrect Poses in Odom Frame*
 
 
@@ -59,7 +60,7 @@ In the resampling function, we draw a new cloud from the old one with each parti
 
 
 
-<img width="1280" height="960" alt="Comprobo Particle Filter Conceptual Overview (5)" src="https://github.com/user-attachments/assets/79cf007c-fc99-4618-b5b6-df42db8701" />
+<img width="1280" height="960" alt="Comprobo Particle Filter Conceptual Overview (5)" src="https://github.com/user-attachments/assets/2d7f3d99-3a6d-469b-9823-9cba9b442076" />
 
 *Figure 3. Visualization of ROS nodes and topics*
 
