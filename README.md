@@ -16,7 +16,7 @@ A particle filter is a good fit because it can hold many guesses at once. When t
 
 The filter keeps a cloud of 1050 particles. Each particle is one guess of the robot’s pose in the map frame, with a weight for how good it is. An update only runs once the robot has moved at least 0.2m or turned pi/6 rad, so we don't waste time reweighing the same scan. 
 
-<img width="1280" height="960" alt="Comprobo Particle Filter Conceptual Overview" src="https://github.com/user-attachments/assets/e28584d7-180c-4ce7-839a-5b9ffb096733" />
+<img width="1280" height="960" alt="Comprobo Particle Filter Conceptual Overview (4)" src="https://github.com/user-attachments/assets/132e2499-6e93-4b95-a30e-7449f5e9c702" />
 
 *Figure 1. Visualization of Particle Filter Functionality*
 
@@ -31,7 +31,7 @@ Every particle is checked against the occupancy field and redrawn if it lands ou
 
 ### Motion update
 
-Odometry returns the change in the robot’s pose in the odom frame. Each particle has its own heading, so we can't just add dx, dy to every particle. Instead we have to rotate dx, dy into the robot’s own frame using the old odom heading. This gives us how much we moved forward and sideways. Then, we rotate the robot frame motion back out using each particle’s heading and add it to the particle. Next, we add dθ to the particle’s heading and add some Gaussian noise (σ=0.02) to x, y, and , since odometry isn’t perfect.
+Odometry returns the change in the robot’s pose in the odom frame. Each particle has its own heading, so we can't just add dx, dy to every particle. Instead we have to rotate dx, dy into the robot’s own frame using the old odom heading. This gives us how much we moved forward and sideways. Then, we rotate the robot frame motion back out using each particle’s heading and add it to the particle. Next, we add dθ to the particle’s heading and add some Gaussian noise (σ=0.02) to x, y, and θ, since odometry isn’t perfect.
 
 
 <img width="1024" height="768" alt="Comprobo Particle Filter Conceptual Overview (2)" src="https://github.com/user-attachments/assets/d2104112-4729-4760-970c-1450a8be3015" />
@@ -59,7 +59,7 @@ In the resampling function, we draw a new cloud from the old one with each parti
 
 
 
-<img width="1280" height="960" alt="Comprobo Particle Filter Conceptual Overview (3)" src="https://github.com/user-attachments/assets/d3183949-4d9d-4808-845e-bf772437483d" />
+<img width="1280" height="960" alt="Comprobo Particle Filter Conceptual Overview (5)" src="https://github.com/user-attachments/assets/79cf007c-fc99-4618-b5b6-df42db8701" />
 
 *Figure 3. Visualization of ROS nodes and topics*
 
@@ -156,7 +156,7 @@ We also ran several tests using the gazebo simulator with the neato. We used the
 
 ### Comparison of fixed and adaptive random injection
 
-In our initial implementations of the resampler, it injected a fixed 25 random particles (4% of the 625 particle cloud at the time) every update. We replaced it with an adaptive injection logic, which adds at least 5 random particles and up to the whole cloud, depending on how bad the current scan match is compared to usual (scaled by `1- w_fast / w_slow`). With fixed injection, the amount of searching never changes. When the filter is tracking well, the random particles are just acting as noise and die out the next resample, so they cost computing power and time without contributing to the filter. When the robot is lost, the 25 random particles spread over the whole map but are almost never enough for one of them to be near the real pose to be able to recover the cloud.  
+In our initial implementations of the resampler, it injected a fixed 25 random particles (4% of the 625 particle cloud we were using at the time) every update. We replaced it with an adaptive injection logic, which adds at least 5 random particles and up to the whole cloud, depending on how bad the current scan match is compared to usual (scaled by `1- w_fast / w_slow`). With fixed injection, the amount of searching never changes. When the filter is tracking well, the random particles are just acting as noise and die out the next resample, so they cost computing power and time without contributing to the filter. When the robot is lost, the 25 random particles spread over the whole map but are almost never enough for one of them to be near the real pose to be able to recover the cloud.  
 
 > Fixed Injection
 https://github.com/user-attachments/assets/4a1849fb-41c9-4980-87d5-4700034f813c
